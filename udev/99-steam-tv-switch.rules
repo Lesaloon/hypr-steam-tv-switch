@@ -1,2 +1,7 @@
 # Installed by install.sh with your controller IDs
 ACTION=="add", SUBSYSTEM=="usb", ATTR{idVendor}=="XXXX", ATTR{idProduct}=="YYYY", RUN+="/usr/bin/touch /run/user/1000/steam-tv-switch.trigger"
+ACTION=="bind", SUBSYSTEM=="usb", ATTR{idVendor}=="XXXX", ATTR{idProduct}=="YYYY", RUN+="/usr/bin/touch /run/user/1000/steam-tv-switch.trigger"
+ACTION=="add", SUBSYSTEM=="input", ATTRS{idVendor}=="XXXX", ATTRS{idProduct}=="YYYY", RUN+="/usr/bin/touch /run/user/1000/steam-tv-switch.trigger"
+ACTION=="bind", SUBSYSTEM=="input", ATTRS{idVendor}=="XXXX", ATTRS{idProduct}=="YYYY", RUN+="/usr/bin/touch /run/user/1000/steam-tv-switch.trigger"
+ACTION=="add", SUBSYSTEM=="hidraw", ATTRS{idVendor}=="XXXX", ATTRS{idProduct}=="YYYY", RUN+="/usr/bin/touch /run/user/1000/steam-tv-switch.trigger"
+ACTION=="bind", SUBSYSTEM=="hidraw", ATTRS{idVendor}=="XXXX", ATTRS{idProduct}=="YYYY", RUN+="/usr/bin/touch /run/user/1000/steam-tv-switch.trigger"

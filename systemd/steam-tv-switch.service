@@ -5,6 +5,7 @@ After=graphical-session.target
 [Service]
 Type=oneshot
 ExecStart=%h/.local/bin/steam-tv-switch
+TimeoutStartSec=infinity
 Environment=MAIN_MONITOR=DP-3
 Environment=TV_MONITOR=HDMI-A-1
 Environment=TV_MODE=auto

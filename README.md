@@ -35,6 +35,12 @@ You can also autodetect:
 ./install.sh --auto
 ```
 
+To use Big Picture instead of Gamepad UI:
+
+```bash
+./install.sh --bigpicture
+```
+
 ## Find controller USB IDs
 
 1) Unplug the controller

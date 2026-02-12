@@ -2,7 +2,7 @@
 Description=Steam TV switch trigger
 
 [Path]
-PathExists=%t/steam-tv-switch.trigger
+PathChanged=%t/steam-tv-switch.trigger
 Unit=steam-tv-switch.service
 
 [Install]

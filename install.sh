@@ -6,11 +6,13 @@ UID_NUM=$(id -u)
 
 usage() {
   cat <<'EOF'
-Usage: ./install.sh [--vendor VVVV] [--product PPPP] [--auto]
+Usage: ./install.sh [--vendor VVVV] [--product PPPP] [--auto] [--steam-mode MODE] [--bigpicture]
 
 Examples:
   ./install.sh --vendor 2dc8 --product 310b
   ./install.sh --auto
+  ./install.sh --steam-mode bigpicture
+  ./install.sh --bigpicture
 EOF
 }
 
@@ -20,6 +22,7 @@ DEFAULT_PRODUCT="310b"
 VENDOR_ID=""
 PRODUCT_ID=""
 AUTO_DETECT=0
+STEAM_MODE="gamepadui"
 
 while [ $# -gt 0 ]; do
   case "$1" in
@@ -35,6 +38,14 @@ while [ $# -gt 0 ]; do
       AUTO_DETECT=1
       shift 1
       ;;
+    --steam-mode)
+      STEAM_MODE=${2:-""}
+      shift 2
+      ;;
+    --bigpicture)
+      STEAM_MODE="bigpicture"
+      shift 1
+      ;;
     -h|--help)
       usage
       exit 0
@@ -46,6 +57,17 @@ while [ $# -gt 0 ]; do
       ;;
   esac
 done
+
+if [ -n "$STEAM_MODE" ]; then
+  case "$STEAM_MODE" in
+    gamepadui|bigpicture)
+      ;;
+    *)
+      echo "Invalid --steam-mode. Use 'gamepadui' or 'bigpicture'."
+      exit 1
+      ;;
+  esac
+fi
 
 if [ "$AUTO_DETECT" -eq 1 ]; then
   if [ ! -x "$ROOT_DIR/scripts/detect-controller.sh" ]; then
@@ -96,9 +118,21 @@ mkdir -p "$HOME/.config/systemd/user"
 install -m 644 "$ROOT_DIR/systemd/steam-tv-switch.service" "$HOME/.config/systemd/user/steam-tv-switch.service"
 install -m 644 "$ROOT_DIR/systemd/steam-tv-switch.path" "$HOME/.config/systemd/user/steam-tv-switch.path"
 
+echo "Writing systemd override for Steam mode"
+mkdir -p "$HOME/.config/systemd/user/steam-tv-switch.service.d"
+cat > "$HOME/.config/systemd/user/steam-tv-switch.service.d/override.conf" <<EOF
+[Service]
+Environment=STEAM_MODE=${STEAM_MODE}
+EOF
+
 echo "Installing udev rule (requires sudo)"
 sudo tee /etc/udev/rules.d/99-steam-tv-switch.rules >/dev/null <<EOF
 ACTION=="add", SUBSYSTEM=="usb", ATTR{idVendor}=="${VENDOR_ID,,}", ATTR{idProduct}=="${PRODUCT_ID,,}", RUN+="/usr/bin/touch /run/user/${UID_NUM}/steam-tv-switch.trigger"
+ACTION=="bind", SUBSYSTEM=="usb", ATTR{idVendor}=="${VENDOR_ID,,}", ATTR{idProduct}=="${PRODUCT_ID,,}", RUN+="/usr/bin/touch /run/user/${UID_NUM}/steam-tv-switch.trigger"
+ACTION=="add", SUBSYSTEM=="input", ATTRS{idVendor}=="${VENDOR_ID,,}", ATTRS{idProduct}=="${PRODUCT_ID,,}", RUN+="/usr/bin/touch /run/user/${UID_NUM}/steam-tv-switch.trigger"
+ACTION=="bind", SUBSYSTEM=="input", ATTRS{idVendor}=="${VENDOR_ID,,}", ATTRS{idProduct}=="${PRODUCT_ID,,}", RUN+="/usr/bin/touch /run/user/${UID_NUM}/steam-tv-switch.trigger"
+ACTION=="add", SUBSYSTEM=="hidraw", ATTRS{idVendor}=="${VENDOR_ID,,}", ATTRS{idProduct}=="${PRODUCT_ID,,}", RUN+="/usr/bin/touch /run/user/${UID_NUM}/steam-tv-switch.trigger"
+ACTION=="bind", SUBSYSTEM=="hidraw", ATTRS{idVendor}=="${VENDOR_ID,,}", ATTRS{idProduct}=="${PRODUCT_ID,,}", RUN+="/usr/bin/touch /run/user/${UID_NUM}/steam-tv-switch.trigger"
 EOF
 
 echo "Reloading udev rules"

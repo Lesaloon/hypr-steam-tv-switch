@@ -10,6 +10,8 @@ STEAM_MODE=${STEAM_MODE:-gamepadui}
 TRIGGER_FILE=${TRIGGER_FILE:-${XDG_RUNTIME_DIR:-/run/user/$UID}/steam-tv-switch.trigger}
 POLL_INTERVAL=${POLL_INTERVAL:-2}
 APPEAR_TIMEOUT=${APPEAR_TIMEOUT:-20}
+MIN_TV_ON=${MIN_TV_ON:-20}
+STEAM_EXIT_GRACE=${STEAM_EXIT_GRACE:-6}
 
 LOCK_DIR=${XDG_RUNTIME_DIR:-/run/user/$UID}
 LOCK_FILE="$LOCK_DIR/steam-tv-switch.lock"
@@ -46,7 +48,11 @@ import subprocess
 import sys
 
 name = sys.argv[1]
-data = json.loads(subprocess.check_output(["hyprctl", "monitors", "-j"]))
+try:
+    raw = subprocess.check_output(["hyprctl", "monitors", "all", "-j"])
+except subprocess.CalledProcessError:
+    raw = subprocess.check_output(["hyprctl", "monitors", "-j"])
+data = json.loads(raw)
 for m in data:
     if m.get("name") == name:
         mode = f"{m.get('width')}x{m.get('height')}@{m.get('refreshRate')}"
@@ -72,7 +78,11 @@ import sys
 
 main_name = sys.argv[1]
 preferred = sys.argv[2]
-data = json.loads(subprocess.check_output(["hyprctl", "monitors", "-j"]))
+try:
+    raw = subprocess.check_output(["hyprctl", "monitors", "all", "-j"])
+except subprocess.CalledProcessError:
+    raw = subprocess.check_output(["hyprctl", "monitors", "-j"])
+data = json.loads(raw)
 
 for m in data:
     if m.get("name") == preferred:
@@ -103,7 +113,11 @@ import subprocess
 import sys
 
 name = sys.argv[1]
-data = json.loads(subprocess.check_output(["hyprctl", "monitors", "-j"]))
+try:
+    raw = subprocess.check_output(["hyprctl", "monitors", "all", "-j"])
+except subprocess.CalledProcessError:
+    raw = subprocess.check_output(["hyprctl", "monitors", "-j"])
+data = json.loads(raw)
 for m in data:
     if m.get("name") == name:
         mode = f"{m.get('width')}x{m.get('height')}@{m.get('refreshRate')}"
@@ -117,6 +131,10 @@ for m in data:
         sys.exit(0)
 sys.exit(1)
 PY
+}
+
+steam_process_present() {
+  pgrep -x steam >/dev/null 2>&1
 }
 
 big_picture_present() {
@@ -147,13 +165,17 @@ MAIN_SCALE=${main_info[2]}
 MAIN_WIDTH=${main_info[3]:-0}
 MAIN_HEIGHT=${main_info[4]:-0}
 
-if ! hyprctl monitors -j | python3 - "$TV_MONITOR" <<'PY'
+if ! hyprctl monitors all -j | python3 - "$TV_MONITOR" <<'PY'
 import json
 import subprocess
 import sys
 
 name = sys.argv[1]
-data = json.loads(subprocess.check_output(["hyprctl", "monitors", "-j"]))
+try:
+    raw = subprocess.check_output(["hyprctl", "monitors", "all", "-j"])
+except subprocess.CalledProcessError:
+    raw = subprocess.check_output(["hyprctl", "monitors", "-j"])
+data = json.loads(raw)
 for m in data:
     if m.get("name") == name:
         sys.exit(0)
@@ -207,24 +229,42 @@ steam -"$STEAM_MODE" >/dev/null 2>&1 &
 
 seen=0
 start_ts=$(date +%s)
-while true; do
-  if big_picture_present; then
-    seen=1
-    sleep "$POLL_INTERVAL"
-    continue
-  fi
+min_on_deadline=$((start_ts + MIN_TV_ON))
 
-  if [ "$seen" -eq 1 ]; then
+while true; do
+  if steam_process_present || big_picture_present; then
+    seen=1
     break
   fi
 
   now_ts=$(date +%s)
   if [ $((now_ts - start_ts)) -ge "$APPEAR_TIMEOUT" ]; then
-    log "Big Picture not detected; continuing to restore"
+    log "Steam not detected; keeping TV on briefly"
     break
   fi
   sleep "$POLL_INTERVAL"
 done
+
+if [ "$seen" -eq 1 ]; then
+  exit_grace=0
+  while true; do
+    if steam_process_present || big_picture_present; then
+      exit_grace=0
+      sleep "$POLL_INTERVAL"
+      continue
+    fi
+
+    exit_grace=$((exit_grace + POLL_INTERVAL))
+    if [ "$exit_grace" -ge "$STEAM_EXIT_GRACE" ]; then
+      break
+    fi
+    sleep "$POLL_INTERVAL"
+  done
+else
+  while [ "$(date +%s)" -lt "$min_on_deadline" ]; do
+    sleep "$POLL_INTERVAL"
+  done
+fi
 
 log "Restoring main monitor $MAIN_MONITOR"
 hyprctl keyword monitor "$MAIN_MONITOR,$MAIN_MODE,$MAIN_POS,$MAIN_SCALE" >/dev/null
