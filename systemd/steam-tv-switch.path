@@ -1,0 +1,9 @@
+[Unit]
+Description=Steam TV switch trigger
+
+[Path]
+PathExists=/run/steam-tv-switch.trigger
+Unit=steam-tv-switch.service
+
+[Install]
+WantedBy=default.target

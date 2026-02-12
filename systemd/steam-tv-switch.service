@@ -1,0 +1,14 @@
+[Unit]
+Description=Steam TV switch
+After=graphical-session.target
+
+[Service]
+Type=oneshot
+ExecStart=%h/.local/bin/steam-tv-switch
+Environment=MAIN_MONITOR=DP-3
+Environment=TV_MONITOR=HDMI-1-1
+Environment=TV_MODE=4096x2160@120
+Environment=STEAM_MODE=gamepadui
+
+[Install]
+WantedBy=default.target

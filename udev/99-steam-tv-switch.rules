@@ -1,0 +1,2 @@
+# Installed by install.sh with your controller IDs
+ACTION=="add", SUBSYSTEM=="usb", ATTR{idVendor}=="XXXX", ATTR{idProduct}=="YYYY", RUN+="/usr/bin/touch /run/steam-tv-switch.trigger"

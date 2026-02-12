@@ -1,0 +1,124 @@
+#!/usr/bin/env bash
+set -euo pipefail
+
+MAIN_MONITOR=${MAIN_MONITOR:-DP-3}
+TV_MONITOR=${TV_MONITOR:-HDMI-1-1}
+TV_MODE=${TV_MODE:-4096x2160@120}
+TV_SCALE=${TV_SCALE:-1}
+TV_POS=${TV_POS:-auto}
+STEAM_MODE=${STEAM_MODE:-gamepadui}
+TRIGGER_FILE=${TRIGGER_FILE:-/run/steam-tv-switch.trigger}
+POLL_INTERVAL=${POLL_INTERVAL:-2}
+APPEAR_TIMEOUT=${APPEAR_TIMEOUT:-20}
+
+LOCK_DIR=${XDG_RUNTIME_DIR:-/run/user/$UID}
+LOCK_FILE="$LOCK_DIR/steam-tv-switch.lock"
+
+log() {
+  printf "[steam-tv-switch] %s\n" "$*"
+}
+
+require_cmd() {
+  if ! command -v "$1" >/dev/null 2>&1; then
+    log "Missing required command: $1"
+    exit 1
+  fi
+}
+
+require_cmd hyprctl
+require_cmd python3
+require_cmd steam
+
+if [ -f "$TRIGGER_FILE" ]; then
+  rm -f "$TRIGGER_FILE"
+fi
+
+mkdir -p "$LOCK_DIR"
+exec 9>"$LOCK_FILE"
+if ! flock -n 9; then
+  exit 0
+fi
+
+read_main_monitor() {
+  python3 - "$MAIN_MONITOR" <<'PY'
+import json
+import subprocess
+import sys
+
+name = sys.argv[1]
+data = json.loads(subprocess.check_output(["hyprctl", "monitors", "-j"]))
+for m in data:
+    if m.get("name") == name:
+        mode = f"{m.get('width')}x{m.get('height')}@{m.get('refreshRate')}"
+        pos = f"{m.get('x')}x{m.get('y')}"
+        scale = str(m.get("scale"))
+        print(mode)
+        print(pos)
+        print(scale)
+        sys.exit(0)
+sys.exit(1)
+PY
+}
+
+big_picture_present() {
+  python3 - <<'PY'
+import json
+import subprocess
+import sys
+
+data = json.loads(subprocess.check_output(["hyprctl", "clients", "-j"]))
+for c in data:
+    if (c.get("class", "").lower() == "steam"):
+        title = c.get("title", "").lower()
+        if "big picture" in title or "gamepad" in title:
+            sys.exit(0)
+sys.exit(1)
+PY
+}
+
+mapfile -t main_info < <(read_main_monitor || true)
+if [ "${#main_info[@]}" -lt 3 ]; then
+  log "Main monitor not found: $MAIN_MONITOR"
+  exit 1
+fi
+
+MAIN_MODE=${main_info[0]}
+MAIN_POS=${main_info[1]}
+MAIN_SCALE=${main_info[2]}
+
+log "Enabling TV monitor $TV_MONITOR at $TV_MODE"
+hyprctl keyword monitor "$TV_MONITOR,$TV_MODE,$TV_POS,$TV_SCALE" >/dev/null
+hyprctl dispatch focusmonitor "$TV_MONITOR" >/dev/null 2>&1 || true
+hyprctl dispatch movecurrentworkspacetomonitor "$TV_MONITOR" >/dev/null 2>&1 || true
+
+log "Launching Steam -$STEAM_MODE"
+steam -"$STEAM_MODE" >/dev/null 2>&1 &
+
+seen=0
+start_ts=$(date +%s)
+while true; do
+  if big_picture_present; then
+    seen=1
+    sleep "$POLL_INTERVAL"
+    continue
+  fi
+
+  if [ "$seen" -eq 1 ]; then
+    break
+  fi
+
+  now_ts=$(date +%s)
+  if [ $((now_ts - start_ts)) -ge "$APPEAR_TIMEOUT" ]; then
+    log "Big Picture not detected; continuing to restore"
+    break
+  fi
+  sleep "$POLL_INTERVAL"
+done
+
+log "Restoring main monitor $MAIN_MONITOR"
+hyprctl keyword monitor "$MAIN_MONITOR,$MAIN_MODE,$MAIN_POS,$MAIN_SCALE" >/dev/null
+hyprctl dispatch focusmonitor "$MAIN_MONITOR" >/dev/null 2>&1 || true
+hyprctl dispatch movecurrentworkspacetomonitor "$MAIN_MONITOR" >/dev/null 2>&1 || true
+hyprctl keyword monitor "$TV_MONITOR,disable" >/dev/null
+
+log "Done"
