@@ -2,12 +2,12 @@
 set -euo pipefail
 
 MAIN_MONITOR=${MAIN_MONITOR:-DP-3}
-TV_MONITOR=${TV_MONITOR:-HDMI-1-1}
-TV_MODE=${TV_MODE:-4096x2160@120}
-TV_SCALE=${TV_SCALE:-1}
+TV_MONITOR=${TV_MONITOR:-HDMI-A-1}
+TV_MODE=${TV_MODE:-auto}
+TV_SCALE=${TV_SCALE:-auto}
 TV_POS=${TV_POS:-auto}
 STEAM_MODE=${STEAM_MODE:-gamepadui}
-TRIGGER_FILE=${TRIGGER_FILE:-/run/steam-tv-switch.trigger}
+TRIGGER_FILE=${TRIGGER_FILE:-${XDG_RUNTIME_DIR:-/run/user/$UID}/steam-tv-switch.trigger}
 POLL_INTERVAL=${POLL_INTERVAL:-2}
 APPEAR_TIMEOUT=${APPEAR_TIMEOUT:-20}
 
@@ -52,9 +52,68 @@ for m in data:
         mode = f"{m.get('width')}x{m.get('height')}@{m.get('refreshRate')}"
         pos = f"{m.get('x')}x{m.get('y')}"
         scale = str(m.get("scale"))
+        width = str(m.get("width"))
+        height = str(m.get("height"))
         print(mode)
         print(pos)
         print(scale)
+        print(width)
+        print(height)
+        sys.exit(0)
+sys.exit(1)
+PY
+}
+
+detect_tv_monitor() {
+  python3 - "$MAIN_MONITOR" "$TV_MONITOR" <<'PY'
+import json
+import subprocess
+import sys
+
+main_name = sys.argv[1]
+preferred = sys.argv[2]
+data = json.loads(subprocess.check_output(["hyprctl", "monitors", "-j"]))
+
+for m in data:
+    if m.get("name") == preferred:
+        print(preferred)
+        sys.exit(0)
+
+for m in data:
+    desc = (m.get("description") or "").lower()
+    model = (m.get("model") or "").lower()
+    if "tv" in desc or "tv" in model:
+        if m.get("name") != main_name:
+            print(m.get("name"))
+            sys.exit(0)
+
+for m in data:
+    if m.get("name") != main_name:
+        print(m.get("name"))
+        sys.exit(0)
+
+sys.exit(1)
+PY
+}
+
+read_tv_monitor() {
+  python3 - "$TV_MONITOR" <<'PY'
+import json
+import subprocess
+import sys
+
+name = sys.argv[1]
+data = json.loads(subprocess.check_output(["hyprctl", "monitors", "-j"]))
+for m in data:
+    if m.get("name") == name:
+        mode = f"{m.get('width')}x{m.get('height')}@{m.get('refreshRate')}"
+        scale = str(m.get("scale"))
+        width = str(m.get("width"))
+        height = str(m.get("height"))
+        print(mode)
+        print(scale)
+        print(width)
+        print(height)
         sys.exit(0)
 sys.exit(1)
 PY
@@ -85,8 +144,60 @@ fi
 MAIN_MODE=${main_info[0]}
 MAIN_POS=${main_info[1]}
 MAIN_SCALE=${main_info[2]}
+MAIN_WIDTH=${main_info[3]:-0}
+MAIN_HEIGHT=${main_info[4]:-0}
 
-log "Enabling TV monitor $TV_MONITOR at $TV_MODE"
+if ! hyprctl monitors -j | python3 - "$TV_MONITOR" <<'PY'
+import json
+import subprocess
+import sys
+
+name = sys.argv[1]
+data = json.loads(subprocess.check_output(["hyprctl", "monitors", "-j"]))
+for m in data:
+    if m.get("name") == name:
+        sys.exit(0)
+sys.exit(1)
+PY
+then
+  TV_MONITOR=$(detect_tv_monitor || true)
+fi
+
+if [ -z "$TV_MONITOR" ]; then
+  log "TV monitor not detected"
+  exit 1
+fi
+
+if [ "$TV_POS" = "auto" ]; then
+  MAIN_X=${MAIN_POS%x*}
+  MAIN_Y=${MAIN_POS#*x}
+  if [ -n "$MAIN_WIDTH" ] && [ "$MAIN_WIDTH" -gt 0 ]; then
+    TV_POS="$((MAIN_X + MAIN_WIDTH))x${MAIN_Y}"
+  else
+    TV_POS="$MAIN_POS"
+  fi
+fi
+
+mapfile -t tv_info < <(read_tv_monitor || true)
+if [ "${#tv_info[@]}" -ge 2 ]; then
+  TV_MODE_DETECTED=${tv_info[0]}
+  TV_SCALE_DETECTED=${tv_info[1]}
+  if [ "$TV_MODE" = "auto" ]; then
+    TV_MODE="$TV_MODE_DETECTED"
+  fi
+  if [ "$TV_SCALE" = "auto" ]; then
+    TV_SCALE="$TV_SCALE_DETECTED"
+  fi
+else
+  if [ "$TV_MODE" = "auto" ]; then
+    TV_MODE="preferred"
+  fi
+  if [ "$TV_SCALE" = "auto" ]; then
+    TV_SCALE="$MAIN_SCALE"
+  fi
+fi
+
+log "Enabling TV monitor $TV_MONITOR at $TV_MODE scale $TV_SCALE pos $TV_POS"
 hyprctl keyword monitor "$TV_MONITOR,$TV_MODE,$TV_POS,$TV_SCALE" >/dev/null
 hyprctl dispatch focusmonitor "$TV_MONITOR" >/dev/null 2>&1 || true
 hyprctl dispatch movecurrentworkspacetomonitor "$TV_MONITOR" >/dev/null 2>&1 || true

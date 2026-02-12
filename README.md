@@ -28,7 +28,12 @@ cd hypr-steam-tv-switch
 ./install.sh
 ```
 
-The installer asks for your controller USB vendor/product IDs.
+Defaults are prefilled for 8BitDo Ultimate 2 Wireless (2dc8:310b).
+You can also autodetect:
+
+```bash
+./install.sh --auto
+```
 
 ## Find controller USB IDs
 
@@ -59,9 +64,9 @@ udevadm info --attribute-walk --name=/dev/bus/usb/003/005
 Edit `bin/steam-tv-switch` and change the defaults at the top:
 
 - `MAIN_MONITOR` (default `DP-3`)
-- `TV_MONITOR` (default `HDMI-1-1`)
-- `TV_MODE` (default `4096x2160@120`)
-- `TV_SCALE` (default `1`)
+- `TV_MONITOR` (default `HDMI-A-1`)
+- `TV_MODE` (default `auto`)
+- `TV_SCALE` (default `auto`)
 - `STEAM_MODE` (default `gamepadui`)
 
 If you want to change values without editing the script, create a systemd override:

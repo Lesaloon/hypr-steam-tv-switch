@@ -6,8 +6,8 @@ After=graphical-session.target
 Type=oneshot
 ExecStart=%h/.local/bin/steam-tv-switch
 Environment=MAIN_MONITOR=DP-3
-Environment=TV_MONITOR=HDMI-1-1
-Environment=TV_MODE=4096x2160@120
+Environment=TV_MONITOR=HDMI-A-1
+Environment=TV_MODE=auto
 Environment=STEAM_MODE=gamepadui
 
 [Install]
